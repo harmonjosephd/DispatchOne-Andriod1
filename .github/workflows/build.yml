@@ -3,27 +3,45 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
-      - uses: android-actions/setup-android@v3
-        with: { api-level: 34, build-tools: "34.0.0" }
-      - name: Install Gradle CLI (to create wrapper if missing)
-        run: sudo apt-get update -y && sudo apt-get install -y gradle
-      - name: Create Gradle wrapper (if absent)
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # v3 no longer takes api-level/build-tools inputs.
+      # It installs cmdline-tools; we then use sdkmanager ourselves.
+      - name: Install Android SDK (cmdline tools)
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+
+      - name: Install required SDK packages
+        run: |
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${ANDROID_SDK_ROOT}" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Ensure Gradle wrapper
         working-directory: android
         run: |
           if [ ! -f gradlew ]; then
+            sudo apt-get update -y && sudo apt-get install -y gradle
             gradle wrapper --gradle-version 8.7
           fi
           chmod +x gradlew
+
       - name: Build Debug APK
         working-directory: android
         run: ./gradlew --no-daemon clean assembleDebug
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
